@@ -1,27 +1,68 @@
 defaults:
-    - agent: sac
+  - _self_
+
+agent:
+  name: sac
+  class: agent.sac.SACAgent
+  params:
+    obs_dim: ??? # to be specified later
+    action_dim: ??? # to be specified later
+    action_range: ??? # to be specified later
+    device: ${device}
+    critic_cfg: ${double_q_critic}
+    actor_cfg: ${diag_gaussian_actor}
+    discount: 0.99
+    init_temperature: 0.1
+    alpha_lr: 1e-4
+    alpha_betas: [0.9, 0.999]
+    actor_lr: 1e-4
+    actor_betas: [0.9, 0.999]
+    actor_update_frequency: 1
+    critic_lr: 1e-4
+    critic_betas: [0.9, 0.999]
+    critic_tau: 0.005
+    critic_target_update_frequency: 2
+    batch_size: 1024
+    learnable_temperature: true
+
+double_q_critic:
+  class: agent.critic.DoubleQCritic
+  params:
+    obs_dim: ${agent.params.obs_dim}
+    action_dim: ${agent.params.action_dim}
+    hidden_dim: 1024
+    hidden_depth: 2
+
+diag_gaussian_actor:
+  class: agent.actor.DiagGaussianActor
+  params:
+    obs_dim: ${agent.params.obs_dim}
+    action_dim: ${agent.params.action_dim}
+    hidden_depth: 2
+    hidden_dim: 1024
+    log_std_bounds: [-5, 2]
 
 env: cheetah_run
 
 # this needs to be specified manually
 experiment: test_exp
 
-num_train_steps: 1e6
+num_train_steps: 200_000 #1_000_000
 replay_buffer_capacity: ${num_train_steps}
 
 num_seed_steps: 5000
 
-eval_frequency: 10000
+eval_frequency: 1800
 num_eval_episodes: 10
 
 device: cuda
 
 # logger
 log_frequency: 10000
-log_save_tb: true
+log_save_tb: false
 
 # video recorder
-save_video: true
+save_video: false
 
 
 seed: 1
@@ -29,6 +70,5 @@ seed: 1
 
 # hydra configuration
 hydra:
-    name: ${env}
     run:
-        dir: ./exp/${now:%Y.%m.%d}/${now:%H%M}_${agent.name}_${experiment}
+        dir: ./exp/${now:%Y.%m.%d}/${now:%H%M}_${experiment}

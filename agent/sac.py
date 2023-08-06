@@ -9,11 +9,12 @@ import utils
 
 import hydra
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SACAgent(Agent):
     """SAC algorithm."""
-    def __init__(self, obs_dim, action_dim, action_range, device, critic_cfg,
-                 actor_cfg, discount, init_temperature, alpha_lr, alpha_betas,
+    def __init__(self, obs_dim, action_dim, action_range, device,
+                 discount, init_temperature, alpha_lr, alpha_betas,
                  actor_lr, actor_betas, actor_update_frequency, critic_lr,
                  critic_betas, critic_tau, critic_target_update_frequency,
                  batch_size, learnable_temperature):
@@ -28,12 +29,13 @@ class SACAgent(Agent):
         self.batch_size = batch_size
         self.learnable_temperature = learnable_temperature
 
-        self.critic = hydra.utils.instantiate(critic_cfg).to(self.device)
-        self.critic_target = hydra.utils.instantiate(critic_cfg).to(
-            self.device)
+        from agent.critic import DoubleQCritic
+        from agent.actor import DiagGaussianActor
+        self.critic = DoubleQCritic(obs_dim, action_dim, hidden_dim=1024, hidden_depth=2).to(self.device)
+        self.critic_target = DoubleQCritic(obs_dim, action_dim, hidden_dim=1024, hidden_depth=2).to(self.device)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
-        self.actor = hydra.utils.instantiate(actor_cfg).to(self.device)
+        self.actor = DiagGaussianActor(obs_dim, action_dim, hidden_dim=1024, hidden_depth=2, log_std_bounds=[-5, 2]).to(self.device)
 
         self.log_alpha = torch.tensor(np.log(init_temperature)).to(self.device)
         self.log_alpha.requires_grad = True
@@ -127,9 +129,34 @@ class SACAgent(Agent):
             alpha_loss.backward()
             self.log_alpha_optimizer.step()
 
-    def update(self, replay_buffer, logger, step):
+    def update(self, replay_buffer, logger, step, classifier_network = None, ranking_network = None, eps = 1e-5):
         obs, action, reward, next_obs, not_done, not_done_no_max = replay_buffer.sample(
             self.batch_size)
+
+
+        old_reward = reward
+        if classifier_network is not None or ranking_network is not None:
+            with torch.no_grad():
+                ranking_val, classify_val = 1.0, 1.0
+                if ranking_network is not None:
+                    ranking_val= torch.sigmoid(ranking_network(obs))
+                    ranking_val_clamped = torch.clip(ranking_val, eps, 1 - eps) # numerical stability
+                if classifier_network is not None:
+                    classify_val = torch.sigmoid(classifier_network(obs))
+                    classify_val_clamped = torch.clip(classify_val, eps, 1 - eps) # numerical stability
+
+                if ranking_network is not None and classifier_network is not None:
+                    # reward = np.log(ranking_val_clamped) + np.log(classify_val_clamped) - np.log(1 - classify_val_clamped)
+                    reward = ranking_val * classify_val
+                elif ranking_network is not None:
+                    # reward = np.log(ranking_val_clamped)
+                    reward = ranking_val
+                elif classifier_network is not None:
+                    # reward = np.log(classify_val_clamped) - np.log(1 - classify_val_clamped)
+                    reward = classify_val
+                else:
+                    # you want to override reward but don't say how
+                    assert False
 
         logger.log('train/batch_reward', reward.mean(), step)
 
