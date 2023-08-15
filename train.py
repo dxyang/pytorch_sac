@@ -25,7 +25,7 @@ import utils
 import hydra
 
 from agent.sac import SACAgent
-from pointmass_utils import DmcPointTwoWall, PointEnvTwoWall
+from pointmass_utils import PointEnvTwoWall
 from helpers import Policy
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -135,7 +135,7 @@ def eval_network_over_statespace(classifier, ranker, workdir, step, plot_ranking
 class Workspace(object):
     def __init__(self, cfg, args):
         self.work_dir = os.getcwd()
-        self.exp_dir = f"/home/dxyang/code/rewardlearning-vid/pytorch_sac/exps/{args.exp_name}"
+        self.exp_dir = os.expanduser(f"~/code/rewardlearning-vid/pytorch_sac/exps/{args.exp_name}")
         if not os.path.exists(self.exp_dir):
             os.makedirs(self.exp_dir)
         print(f'workspace: {self.work_dir}')
@@ -150,7 +150,7 @@ class Workspace(object):
 
         utils.set_seed_everywhere(cfg.seed)
         self.device = torch.device(cfg.device)
-        self.env = PointEnvTwoWall() #DmcPointTwoWall(gym_env)
+        self.env = PointEnvTwoWall()
 
         cfg.agent.params.obs_dim = self.env.observation_space.shape[0]
         cfg.agent.params.action_dim = self.env.action_space.shape[0]

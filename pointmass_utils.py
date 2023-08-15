@@ -7,8 +7,6 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-import drqv2.dmc as dmc
-
 from helpers import doIntersect
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -294,79 +292,6 @@ class PointEnvTwoWall(gym.Env):
         self.ctlr = WaypointController(self.waypoints, self.max_vel)
         return self.get_obs()
 
-class DmcPointTwoWall():
-
-    def __init__(self, env):
-        self._env = env
-        self._step = 0
-        self.max_episode_length = 300
-
-        self.last_received_reward_changed = True
-        self.last_received_reward = 0
-
-    def reset(self):
-        self._step = 0
-        obs = self._env.reset()
-        timestep = self._convert_obs_to_timestep(obs, step_type=StepType.FIRST)
-        return timestep
-
-    def step(self, action):
-        obs, reward, done, info = self._env.step(action)
-        self._step += 1
-        if self._step >= self.max_episode_length:
-            done = True
-
-        self.last_received_reward = reward
-        self.last_received_reward_changed = True
-
-        if done:
-            timestep = self._convert_obs_to_timestep(obs, step_type=StepType.LAST, action=action, reward=reward, info=info)
-        else:
-            timestep = self._convert_obs_to_timestep(obs, step_type=StepType.MID, action=action, reward=reward, info=info)
-        return timestep
-
-    def get_last_received_reward(self):
-        assert self.last_received_reward_changed
-        self.last_received_reward_changed = False
-        return self.last_received_reward
-
-    def observation_spec(self):
-        env_obs_spec = specs.BoundedArray(shape=(2,),
-                                            dtype=np.float32,
-                                            minimum=-np.inf,
-                                            maximum=np.inf,
-                                            name='observation')
-        return env_obs_spec
-
-    def action_spec(self):
-        env_action_spec = specs.BoundedArray(shape=(2,),
-                                            dtype=np.float32,
-                                            minimum=-1,
-                                            maximum=1,
-                                            name='action')
-        return env_action_spec
-
-    def __getattr__(self, name):
-        return getattr(self._env, name)
-
-    def _convert_obs_to_timestep(self, obs_dict, step_type, action=None, reward=0.0, info={}):
-        if action is None:
-            action_spec = self.action_spec()
-            action = np.zeros(action_spec.shape, dtype=action_spec.dtype)
-
-        success = False
-        if "dist_to_goal" in info:
-            success = info["dist_to_goal"] < 5e-2
-
-        return dmc.BasicTimeStep(
-            step_type=step_type,
-            reward=reward,
-            discount=1.0,
-            observation=obs_dict,
-            action=action,
-            success=success,
-            og_reward=reward
-        )
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
